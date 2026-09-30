@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Control Financiero</title>
+  <!-- Tailwind CSS para diseño -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js para gráficos -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SDKs de Firebase (Compatibles para HTML directo) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-gray-100 font-sans p-4 md:p-8">
+
+  <div class="max-w-5xl mx-auto space-y-6">
+    
+    <!-- Encabezado -->
+    <header class="text-center">
+      <h1 class="text-3xl font-bold text-gray-800">Mi Control Financiero</h1>
+      <p class="text-gray-600">Sincronizado en tiempo real con la nube ☁️</p>
+    </header>
+
+    <!-- Resumen / Balance -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
+        <p class="text-sm text-gray-500 font-medium">Ingresos Totales</p>
+        <p id="total-ingresos" class="text-2xl font-bold text-green-600">$0</p>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-red-500">
+        <p class="text-sm text-gray-500 font-medium">Gastos Totales</p>
+        <p id="total-gastos" class="text-2xl font-bold text-red-600">$0</p>
+      </div>
+      <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
+        <p class="text-sm text-gray-500 font-medium">Disponible / Saldo</p>
+        <p id="saldo-total" class="text-2xl font-bold text-blue-600">$0</p>
+      </div>
+    </div>
+
+    <!-- Barra de Porcentaje consumido -->
+    <div class="bg-white p-5 rounded-xl shadow-sm space-y-2">
+      <div class="flex justify-between items-center text-sm font-semibold text-gray-700">
+        <span>Uso del Presupuesto (Gastos vs Ingresos)</span>
+        <span id="porcentaje-texto">0%</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+        <div id="barra-progreso" class="bg-green-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Formulario + Gráficos -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Formulario de Entrada -->
+      <div class="bg-white p-6 rounded-xl shadow-sm lg:col-span-1 space-y-4">
+        <h2 class="text-lg font-semibold text-gray-700">Agregar Movimiento</h2>
+        <form id="finance-form" class="space-y-4">
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-600">Tipo de Movimiento</label>
+            <select id="tipo" onchange="cargarCategorias()" class="w-full mt-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+              <option value="gasto">Gasto (-)</option>
+              <option value="ingreso">Ingreso (+)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-600">Categoría</label>
+            <select id="categoria" class="w-full mt-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-600">Nota (Opcional)</label>
+            <input type="text" id="descripcion" placeholder="Ej: Pago de luz, supermercado..." 
+                   class="w-full mt-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-600">Monto ($)</label>
+            <input type="number" id="monto" min="1" placeholder="Ej: 45000" required
+                   class="w-full mt-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+
+          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition duration-200">
+            Guardar en la Nube ☁️
+          </button>
+        </form>
+      </div>
+
+      <!-- Gráficos -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:col-span-2 gap-6">
+        
+        <div class="bg-white p-6 rounded-xl shadow-sm flex flex-col items-center">
+          <h2 class="text-base font-semibold mb-2 text-gray-700 w-full text-left">Ingresos vs Gastos</h2>
+          <div class="w-full h-64 flex items-center justify-center">
+            <canvas id="comparativaChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-sm flex flex-col items-center">
+          <h2 class="text-base font-semibold mb-2 text-gray-700 w-full text-left">Distribución de Gastos</h2>
+          <div class="w-full h-64 flex items-center justify-center">
+            <canvas id="gastosChart"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Historial de Transacciones -->
+    <div class="bg-white p-6 rounded-xl shadow-sm">
+      <h2 class="text-lg font-semibold mb-4 text-gray-700">Historial (Guardado en Nube)</h2>
+      <ul id="lista-movimientos" class="divide-y divide-gray-200">
+        <!-- Se llena dinámicamente desde Firestore -->
+      </ul>
+    </div>
+
+  </div>
+
+  <script>
+    // Configuración de tu Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyDCC2xfvcR5nMdb4ID-aq8Hdtz1FRJ0aD8",
+      authDomain: "finanzas-app-ae415.firebaseapp.com",
+      projectId: "finanzas-app-ae415",
+      storageBucket: "finanzas-app-ae415.firebasestorage.app",
+      messagingSenderId: "593586437986",
+      appId: "1:593586437986:web:06ecca35fe0822a170f63b",
+      measurementId: "G-KRLCF1S1DS"
+    };
+
+    // Inicializar Firebase y Firestore
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const categoriasMap = {
+      ingreso: [
+        'Sueldo Principal',
+        'Honorarios / Freelance',
+        'Inversiones',
+        'Otros Ingresos'
+      ],
+      gasto: [
+        'Vivienda',
+        'Servicios (Luz, Agua, Net)',
+        'Alimentación / Supermercado',
+        'Transporte / Bencina',
+        'Salud y Medicamentos',
+        'Educación',
+        'Restaurantes y Delivery',
+        'Entretenimiento / Salidas',
+        'Suscripciones y Apps',
+        'Compras Personales',
+        'Cuidado Personal',
+        'Mascotas',
+        'Viajes',
+        'Pago de Deudas / Tarjetas',
+        'Ahorro / Fondo Emergencia',
+        'Inversión',
+        'Otros Gastos'
+      ]
+    };
+
+    let movimientos = [];
+    let doughnutChartInstance = null;
+    let barChartInstance = null;
+
+    const form = document.getElementById('finance-form');
+    const tipoEl = document.getElementById('tipo');
+    const categoriaEl = document.getElementById('categoria');
+    const totalIngresosEl = document.getElementById('total-ingresos');
+    const totalGastosEl = document.getElementById('total-gastos');
+    const saldoTotalEl = document.getElementById('saldo-total');
+    const listaMovimientosEl = document.getElementById('lista-movimientos');
+    const porcentajeTextoEl = document.getElementById('porcentaje-texto');
+    const barraProgresoEl = document.getElementById('barra-progreso');
+
+    function cargarCategorias() {
+      categoriaEl.innerHTML = '';
+      categoriasMap[tipoEl.value].forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat;
+        option.textContent = cat;
+        categoriaEl.appendChild(option);
+      });
+    }
+
+    // Escuchar cambios en tiempo real desde Firebase Firestore
+    db.collection("movimientos").orderBy("fecha", "desc").onSnapshot((snapshot) => {
+      movimientos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      actualizarApp();
+    });
+
+    function actualizarApp() {
+      let ingresos = 0;
+      let gastos = 0;
+      let categoriasGastos = {};
+
+      listaMovimientosEl.innerHTML = '';
+
+      movimientos.forEach((mov) => {
+        if (mov.tipo === 'ingreso') {
+          ingresos += mov.monto;
+        } else {
+          gastos += mov.monto;
+          categoriasGastos[mov.categoria] = (categoriasGastos[mov.categoria] || 0) + mov.monto;
+        }
+
+        const li = document.createElement('li');
+        li.className = "py-3 flex justify-between items-center";
+        const esIngreso = mov.tipo === 'ingreso';
+        
+        li.innerHTML = `
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="font-medium text-gray-800">${mov.categoria}</span>
+              <span class="text-xs px-2 py-0.5 rounded ${esIngreso ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} font-semibold">
+                ${esIngreso ? 'Ingreso' : 'Gasto'}
+              </span>
+            </div>
+            ${mov.descripcion ? `<p class="text-xs text-gray-500">${mov.descripcion}</p>` : ''}
+          </div>
+          <div class="flex items-center space-x-3">
+            <span class="font-semibold ${esIngreso ? 'text-green-600' : 'text-red-600'}">
+              ${esIngreso ? '+' : '-'}$${mov.monto.toLocaleString('es-CL')}
+            </span>
+            <button onclick="eliminarMovimiento('${mov.id}')" class="text-gray-400 hover:text-red-500 text-sm p-1">✕</button>
+          </div>
+        `;
+        listaMovimientosEl.appendChild(li);
+      });
+
+      // Actualizar Totales
+      totalIngresosEl.innerText = `$${ingresos.toLocaleString('es-CL')}`;
+      totalGastosEl.innerText = `$${gastos.toLocaleString('es-CL')}`;
+      const saldo = ingresos - gastos;
+      saldoTotalEl.innerText = `$${saldo.toLocaleString('es-CL')}`;
+      saldoTotalEl.className = saldo < 0 ? "text-2xl font-bold text-red-600" : "text-2xl font-bold text-blue-600";
+
+      // Barra de progreso
+      let porcentaje = ingresos > 0 ? Math.min(Math.round((gastos / ingresos) * 100), 100) : (gastos > 0 ? 100 : 0);
+      porcentajeTextoEl.innerText = `${porcentaje}% de ingresos consumidos`;
+      barraProgresoEl.style.width = `${porcentaje}%`;
+
+      if (porcentaje < 70) {
+        barraProgresoEl.className = "bg-green-500 h-4 rounded-full transition-all duration-500";
+      } else if (porcentaje < 90) {
+        barraProgresoEl.className = "bg-yellow-500 h-4 rounded-full transition-all duration-500";
+      } else {
+        barraProgresoEl.className = "bg-red-500 h-4 rounded-full transition-all duration-500";
+      }
+
+      actualizarGraficoComparativo(ingresos, gastos);
+      actualizarGraficoCategorias(categoriasGastos);
+    }
+
+    function actualizarGraficoComparativo(ingresos, gastos) {
+      const ctx = document.getElementById('comparativaChart').getContext('2d');
+      if (barChartInstance) barChartInstance.destroy();
+
+      barChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Ingresos', 'Gastos'],
+          datasets: [{
+            data: [ingresos, gastos],
+            backgroundColor: ['#22c55e', '#ef4444'],
+            borderRadius: 8
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    function actualizarGraficoCategorias(categorias) {
+      const ctx = document.getElementById('gastosChart').getContext('2d');
+      const labels = Object.keys(categorias);
+      const data = Object.values(categorias);
+
+      if (doughnutChartInstance) doughnutChartInstance.destroy();
+
+      doughnutChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels.length ? labels : ['Sin gastos'],
+          datasets: [{
+            data: data.length ? data : [1],
+            backgroundColor: ['#ef4444', '#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#6b7280']
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+        }
+      });
+    }
+
+    // Agregar movimiento a Firebase
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const tipo = tipoEl.value;
+      const categoria = categoriaEl.value;
+      const descripcion = document.getElementById('descripcion').value.trim();
+      const monto = parseFloat(document.getElementById('monto').value);
+
+      db.collection("movimientos").add({
+        tipo,
+        categoria,
+        descripcion,
+        monto,
+        fecha: new Date()
+      });
+
+      document.getElementById('descripcion').value = '';
+      document.getElementById('monto').value = '';
+    });
+
+    // Eliminar movimiento de Firebase
+    function eliminarMovimiento(id) {
+      db.collection("movimientos").doc(id).delete();
+    }
+
+    // Inicialización
+    cargarCategorias();
+  </script>
+</body>
+</html>
